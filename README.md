@@ -21,30 +21,30 @@ A python package that calculates the standard Gibbs free energy of reaction as a
 
 ## Installation on Ubuntu
 
-1. 'sudo apt-get install openbabel python-rdkit librdkit1 rdkit-data'
-2. 'sudo pip install -U numpy scipy scikit-learn pandas'
-3. ChemAxon Marvin suite (http://www.chemaxon.com/download/marvin-suite/)
-   * add 'cxcalc' to PATH
+1. `sudo apt-get install openbabel python-rdkit librdkit1 rdkit-data`
+2. `sudo pip install -U numpy scipy scikit-learn pandas`
+3. ChemAxon [Marvin suite](http://www.chemaxon.com/download/marvin-suite/)
+   * add `cxcalc` to PATH
    * obtain a free academic license from ChemAxon
 4. Optional
-   * installation of GNU Octave (https://blink1073.github.io/oct2py/source/installation.html)
-   * 'sudo pip install -U oct2py lmfit sympy'
+   * installation of [GNU Octave](https://blink1073.github.io/oct2py/source/installation.html) 
+   * `sudo pip install -U oct2py lmfit sympy`
 
 ## Installation on Windows
 
 1. Install 32-bit python2.7
-   * WinPython (https://github.com/winpython/winpython)
-   * add 'python.exe' to environment variables
-   * for packages not included in WinPython, do 'pip install [packagename]'
+   * [Winpython](https://github.com/winpython/winpython)
+   * add `python.exe` to environment variables
+   * for packages not included in WinPython, do `pip install [packagename]`
 2. Install openbabel (version 2.3.2) and python bindings (version 1.8)
-   * openbabel (http://openbabel.org/wiki/Category:Installation)
-   * python bindings (http://open-babel.readthedocs.io/en/latest/UseTheLibrary/PythonInstall.html#windows)
-3. ChemAxon Marvin suite (http://www.chemaxon.com/download/marvin-suite/)
-   * cxcalc module is typically added to PATH by the installer, if not, depending on where the specific package (e.g. MarvinBeans) of ChemAxon is installed, add 'ChemAxon\MarvinBeans\bin' to environment variables
+   * [openbabel](http://openbabel.org/wiki/Category:Installation)
+   * [python bindings](http://open-babel.readthedocs.io/en/latest/UseTheLibrary/PythonInstall.html#windows)
+3. ChemAxon [Marvin suite](http://www.chemaxon.com/download/marvin-suite/)
+   * cxcalc module is typically added to PATH by the installer, if not, depending on where the specific package (e.g. MarvinBeans) of ChemAxon is installed, add `ChemAxon\MarvinBeans\bin` to environment variables
    * obtain a free academic license from ChemAxon
 4. Optional
-   * installation of [GNU Octave] (https://blink1073.github.io/oct2py/source/installation.html)
-   * for packages not included in WinPython, do 'pip install [packagename]'
+   * installation of [GNU Octave](https://blink1073.github.io/oct2py/source/installation.html)
+   * for packages not included in WinPython, do `pip install [packagename]`
    
 ## Overview of files in /data
 * TECRDB_compounds_data.csv, table of all compounds involved in reactions in NIST TECRdb, with their properties including number of hydrogens, charge, binding constant, etc.
