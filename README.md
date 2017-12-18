@@ -1,8 +1,8 @@
 # group-contribution
 
-Calculation of standard Gibbs free energy of reaction as a function of temperature
+A python package that calculates the standard Gibbs free energy of reaction as a function of temperature. 
 
-### Requirements (python)
+### Requirements
 
 * python == 2.7
 * numpy >= 1.13.3
@@ -13,7 +13,7 @@ Calculation of standard Gibbs free energy of reaction as a function of temperatu
 * scikit-learn >= 0.19.1
 * pandas >= 0.21.0
 
-### Optional requirements (python)
+### Optional requirements
 
 * oct2py >= 3.5.7
 * lmfit >= 0.9.2
@@ -54,4 +54,3 @@ Calculation of standard Gibbs free energy of reaction as a function of temperatu
 * dSr_training_data.csv, standard entropy change of reaction used as training data for prediction
 * metal_thermo_data.csv, thermodynamic properties of metal ions used to calculate the change of standard Gibbs energy of formation of metal ions over temperature
 * organic_cpd_thermo_data.csv, thermodynamic properties of collected organic compounds. The specific properties include heat capacity, standard Gibbs free energy of formation, standard transformed Gibbs free energy of formation, standard enthalpy of formation, standard entropy change of formation.
-   
