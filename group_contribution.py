@@ -120,8 +120,9 @@ class group_contribution(training_data):
         self.cpd_molstring_dict = cpd_molstring_dict
         #If there are new compounds, append columns to S matrix transpose
         self._update_cpd_data_and_groups()
-        self.training_species_ids = self.training_species_ids + self.new_cpd_pH7_sid_list
-        self.training_S_mat_T = np.hstack((self.training_S_mat_T, np.zeros((self.training_S_mat_T.shape[0], len(self.new_cpd_pH7_sid_list)))))
+        addition_training_species_ids = list(set([self.TECRDB_compounds_pH7_species_id_dict[cid] for cid in self.to_calc_cids])-set(self.training_species_ids))
+        self.training_species_ids = self.training_species_ids + addition_training_species_ids
+        self.training_S_mat_T = np.hstack((self.training_S_mat_T, np.zeros((self.training_S_mat_T.shape[0], len(addition_training_species_ids)))))
         thermo_transform = thermodynamic_transformations(self.TECRDB_compounds_data_dict, self.TECRDB_compounds_pH7_species_id_dict)
         
         #set up to_calc_S_mat_transpose, row is number of rxns to calculate, column is all_sids
