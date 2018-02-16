@@ -15,7 +15,6 @@ A python package that calculates the standard Gibbs free energy of reaction as a
 
 ### Optional requirements
 
-* oct2py >= 3.5.7
 * lmfit >= 0.9.2
 * sympy >= 1.1.1
 
@@ -27,8 +26,7 @@ A python package that calculates the standard Gibbs free energy of reaction as a
    * add `cxcalc` to PATH
    * obtain a free academic license from ChemAxon
 4. Optional
-   * installation of [GNU Octave](https://blink1073.github.io/oct2py/source/installation.html) 
-   * `sudo pip install -U oct2py lmfit sympy`
+   * `sudo pip install -U lmfit sympy`
 
 ## Installation on Windows
 

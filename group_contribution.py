@@ -5,9 +5,7 @@ from thermodynamic_transformations import thermodynamic_transformations
 from dSr_calculation import dSr_calculation
 from process_thermo_data import thermo_data
 from chemaxon import Get_pKas_Hs_zs_pH7smiles
-from oct2py import Oct2Py
 import sys
-oc = Oct2Py()
 
 class group_contribution(training_data):
     
@@ -151,8 +149,8 @@ class group_contribution(training_data):
         
         #set up training matrices and obtain estimates for group contribution (component contribution)
         self.training_rxn_group_mat = np.dot(self.training_S_mat_T, self.training_sid_group_mat)
-        self.training_inv_S, self.training_P_R_rc, self.training_P_N_rc = group_contribution.invert_matrix(self.training_S_mat_T.T, method='octave')
-        self.training_inv_GS, self.training_P_R_gc, self.training_P_N_gc = group_contribution.invert_matrix(self.training_rxn_group_mat, method='octave')
+        self.training_inv_S, self.training_P_R_rc, self.training_P_N_rc = group_contribution.invert_matrix(self.training_S_mat_T.T)
+        self.training_inv_GS, self.training_P_R_gc, self.training_P_N_gc = group_contribution.invert_matrix(self.training_rxn_group_mat)
         
         self.training_dG0_rc = np.dot(self.training_inv_S.T, self.training_dGr0s)
         self.training_dG0_gc = np.dot(np.dot(self.training_sid_group_mat, self.training_inv_GS),self.training_dGr0s)
@@ -200,17 +198,7 @@ class group_contribution(training_data):
         Calculate the inverse of the matrix, possible with different modules
         """
         n, m = A.shape
-        if method == 'octave':
-            U, S, V = oc.svd(A)
-            s = np.diag(S)
-            U = np.array(U)
-            V = np.array(V)
-            r = sum(abs(s) > eps)
-            inv_S = np.array(np.diag([1.0/s[i] for i in xrange(r)]))
-            inv_A = np.dot(np.dot(V[:, :r],inv_S), U[:, :r].T)
-            P_R   = np.dot(U[:, :r], U[:, :r].T)
-            P_N   = np.dot(U[:, r: ], U[:, r:].T)
-        elif method == 'numpy':
+        if method == 'numpy':
             U, s, V_H = np.linalg.svd(A, full_matrices=True)
             V = V_H.T
             r = sum(abs(s) > eps)
