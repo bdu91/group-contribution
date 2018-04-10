@@ -2,174 +2,173 @@ from sklearn import linear_model
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
 import pandas as pd
-from copy import deepcopy
 import numpy as np
 from process_thermo_data import thermo_data
 from chemaxon import Calculate_mol_properties
-thermodynamics_data = thermo_data()
+import compound_groups
 
 class dSr_calculation(object):
-    def __init__(self, dSf_data_frac = 0.0, use_dSr_from_dSf = False):
+    def __init__(self, compounds_data_dict = {}, compounds_pH7_species_id_dict = {}):
         """
         A module that calculates dSr of reaction for transformation of dGr over temperature
         """
         # the minimum fraction of dSf data used to calculate dSr in a single reaction
         # if 0 means that in reaction where dSf data are not available for all of its metabolites, dSf estimates are
-        # used for all the metabolites to calculate dSr
-        self.dSf_data_frac = dSf_data_frac
-        # if true, we will use dSr data calculated only from dSf data and predictions
-        self.use_dSr_from_dSf = use_dSr_from_dSf
-        self.process_dSr_training_data()
-        # load the dataframe containing dSf and pKMg data, as well as precalculated molecular descriptors
-        self.sid_mol_properties_table = pd.read_csv('data/dSf_pKMg_data.csv')
-        self.mol_properties_names = self.sid_mol_properties_table.columns.tolist()[self.sid_mol_properties_table.columns.tolist().index('C_partial_charge'):]
+        self.dSf_pKMg_data_df = pd.read_csv('data/dSf_pKMg_data.csv')
+        self.dSr_data_df = pd.read_csv('data/dSr_training_data.csv')
+        self.mol_properties_names = self.dSf_pKMg_data_df.columns.tolist()[self.dSf_pKMg_data_df.columns.tolist().index('C_partial_charge'):]
+        self.process_dSf_training_data()
+        self.compounds_pH7_species_id_dict = compounds_pH7_species_id_dict
+        self.compounds_data_dict = compounds_data_dict
+        self.cofactor_cids = ['CHB_16048', 'CHB_17621', 'PBC_4481', 'PBC_4066204', 'CHB_16238', 'CHB_17877', 'CHB_15846', 'CHB_16908', 'CHB_18009', 'CHB_16474', 'PBC_123926', 'MAN_10059', 'PBC_4156341', 'MAN_10151']
         self.new_sid_properties_dict = {} #a dict that stores the molecular properties calculated
     
-    @staticmethod
-    def calc_rxn_met_num_change(rxn_dict_list):
+    def process_dSf_training_data(self):
         """
-        Calculate the difference in number of products and substrates for a list of reactions, not considering water (CHB_15377) in reaction
-        :param rxn_dict_list: a list of dictionaries for reactions; in each dictionary, keys are metabolite id, values are stoichiometry of metabolite in reaction
-        :return: the differences in number of products and substrates for reactions in a list
+        Process the training data for dSf calculation, including data for dSf and dSr (linear combination of dSr)
         """
-        met_num_change_list = []
-        rxn_dict_list_cp = deepcopy(rxn_dict_list)
-        for cur_rxn_dict in rxn_dict_list_cp:
-            if 'CHB_15377' in cur_rxn_dict.keys():
-                del cur_rxn_dict['CHB_15377'] #not considering water in the metabolites
-            num_of_products = 0
-            num_of_reactants = 0
-            for stoich in cur_rxn_dict.values():
-                if stoich > 0:
-                    num_of_products += abs(stoich)
-                else:
-                    num_of_reactants += abs(stoich)
-            cur_met_num_change = num_of_products - num_of_reactants
-            met_num_change_list.append(cur_met_num_change)
-        return met_num_change_list
-    
-    def process_dSr_training_data(self):
-        """
-        Prepare training data for dSr estimation
-        :return: self.selected_dSr_training_data_table as pandas dataframe contains information for training data
-                 self.dSr_training_data is the training data for dSr estimation
-        """
-        self.dSr_training_data_table = pd.read_csv('data/dSr_training_data.csv')
-        if self.use_dSr_from_dSf == False:
-            #dSr calculated from dGr over T or dGr and dHr
-            dSr_from_slope_and_dGdH_table = self.dSr_training_data_table[self.dSr_training_data_table['dS_r_from_slope'].notnull()]
-            #dSr calculated from dSf data
-            dSr_from_dSf_data_table = self.dSr_training_data_table[(self.dSr_training_data_table['dS_r_from_slope'].isnull())\
-                                & (self.dSr_training_data_table['extend of using dS_f data'] >= self.dSf_data_frac)]
-            self.selected_dSr_training_data_table = dSr_from_slope_and_dGdH_table.append(dSr_from_dSf_data_table, ignore_index = True)
-            
-            dSr_training_data = []
-            for i, row in self.selected_dSr_training_data_table.iterrows():
-                if not pd.isnull(row['dS_r_from_slope']):
-                    dSr_training_data.append(row['dS_r_from_slope'])
-                else:
-                    dSr_training_data.append(row['using dS_f data'])
-            self.dSr_training_data = np.array(dSr_training_data)
-        else:
-            self.selected_dSr_training_data_table = self.dSr_training_data_table.copy()
-            self.dSr_training_data = np.array(self.selected_dSr_training_data_table['using dS_f data'].tolist())
-    
-    def _construct_dSr_property_matrix(self, rxn_dicts, rxn_dGr_data):
-        """
-
-        :param rxn_dicts: a list of dictionaries for reactions; in each dictionary, keys are metabolite id, values are stoichiometry of metabolite in reaction
-        :param rxn_dGr_data: a list of dGr for each reaction
-        :return: dSr_property_matrix: the property matrix containing features used for dSr estimation
-                 to_subtract_dSr_array: sum of inorganic dSf to subtract for each reaction, we are not considering
-                                        inorganic compounds in dSr estimation
-        """
-        #updated_groups entry is added when new compounds are added to compounds_data_dict
-        if 'updated_groups' in self.compounds_data_dict['CHB_15422_-1'].keys(): #random species id to get group info
-            groups_to_query = 'updated_groups'
-        else:
-            groups_to_query = 'groups'
-        group_len_to_query = len(self.compounds_data_dict['CHB_15422_-1']['groups'])
+        self.dSf_training_sids = self.dSf_pKMg_data_df[~pd.isnull(self.dSf_pKMg_data_df['dS_f(J/K/mol)'])].species_id.tolist()
+        self.dSr_training_formula_list = self.dSr_data_df.rxn_formula.tolist()
+        self.dSf_data = [self.dSf_pKMg_data_df[self.dSf_pKMg_data_df.species_id == cur_sid]['dS_f(J/K/mol)'].tolist()[0] for cur_sid in self.dSf_training_sids]
+        self.dSr_data = [self.dSr_data_df[self.dSr_data_df.rxn_formula == cur_formula].dS_r_from_slope.tolist()[0] for cur_formula in self.dSr_training_formula_list]
+        self.dSf_data_total = np.array(self.dSf_data + self.dSr_data)
         
-        to_subtract_dSr_array = np.zeros(len(rxn_dicts))
-        to_subtract_dGr_array = np.zeros(len(rxn_dicts))
-        dSr_group_matrix = np.zeros((len(rxn_dicts),group_len_to_query))
-        mol_properties_matrix = np.zeros((len(rxn_dicts),len(self.mol_properties_names)))
+    def get_sids_from_formula(self, rxn_formula_list):
+        """
+        Obtain all the species ids from the list of reaction formulas
+        :param rxn_formula_list: a list of reaction formulas, each reaction formula can either be a string such as "2 CHB_16761 = CHB_15422 + CHB_16027" or a dictionary such as {'CHB_15422': 1, 'CHB_16027': 1, 'CHB_16761': -2.0}
+        :return: the list of species ids at pH7 in the reaction formulas
+        """
+        cid_list_from_formula = []
+        for cur_formula in rxn_formula_list:
+            if type(cur_formula) == dict:
+                cid_list_from_formula += cur_formula.keys()
+            else:
+                cid_list_from_formula += thermo_data.parse_formula(cur_formula).keys()
+        cid_list_from_formula = list(set(cid_list_from_formula))
+        sid_list_from_formula = [self.compounds_pH7_species_id_dict[cur_cid] for cur_cid in cid_list_from_formula]
+        return sid_list_from_formula
+    
+    def build_property_mat(self, sid_list2query = [], rxn_formula_list = []):
+        """
+        Construct the property matrix to estimate dSf
+        :param sid_list2query: a list of species ids, the aqueous species to get the groups and molecular properties
+        :param rxn_formula_list: a list of reaction formula or reaction dictionaries, the reaction to get the sum of groups and molecular properties from its participating aqueous species
+        :return: numpy array, the property matrix with row corresponding to aqueous species and reactions, columns are groups and molecular properties
+        """
+        #for dSf training data, we also have dSr calculated from dSf, that is effectively the stoichiometric sum of multiple dSf
+        sid_list = list(set(sid_list2query + self.get_sids_from_formula(rxn_formula_list)))
 
-        for i, cur_rxn_dict in enumerate(rxn_dicts):
-            for compound_id, stoich in cur_rxn_dict.iteritems():
-                cur_sid = self.pH7species_id_dict[compound_id]
-                try:
-                    #these compounds have dG_f/dS_f data and cannot be broken down into groups
-                    to_subtract_dSr_array[i] += self.compounds_data_dict[cur_sid]['dS_f'] * stoich
-                    to_subtract_dGr_array[i] += self.compounds_data_dict[cur_sid]['dG_f'] * stoich
-                except KeyError:
-                    cur_species_group = np.array(self.compounds_data_dict[cur_sid][groups_to_query][:group_len_to_query])
-                    dSr_group_matrix[i] += (cur_species_group * stoich)
-                    if cur_sid in self.sid_mol_properties_table.species_id.tolist():
-                        cur_mol_properties = self.sid_mol_properties_table[self.sid_mol_properties_table['species_id']\
-                                             == cur_sid][self.mol_properties_names].values[0]
-                    elif cur_sid in self.new_sid_properties_dict.keys():
-                        #directly extract properties instead of calculating them
-                        cur_mol_properties = self.new_sid_properties_dict[cur_sid]
+        sid2get_groups = \
+        list(set(sid_list) - set([sid for sid in self.compounds_data_dict.keys() if 'groups' in self.compounds_data_dict[sid].keys()])) + \
+        list(set.intersection(set(sid_list),set([self.compounds_pH7_species_id_dict[cid] for cid in self.cofactor_cids])))
+        sid2get_groups_smiles_forms = []
+        for sid in sid2get_groups:
+            if sid in self.compounds_data_dict.keys():
+                sid2get_groups_smiles_forms.append(self.compounds_data_dict[sid]['smiles_form'])
+            else:
+                sid2get_groups_smiles_forms.append(self.dSf_pKMg_data_df[self.dSf_pKMg_data_df['species_id']==sid].smiles_form.tolist()[0])
+        sid2get_groups_gmat = compound_groups.get_group_matrix(sid2get_groups_smiles_forms)
+        group_num = compound_groups.get_group_matrix(['CC']).shape[1] #defined groups that are meaningful, index over this range means the compound is nondecomposable
+
+        #get dSf group matrix and dSf_property matrix
+        dSf_group_mat = np.zeros((len(sid_list2query) + len(rxn_formula_list), group_num))
+        property_startInd = self.dSf_pKMg_data_df.columns.tolist().index('C_partial_charge')
+        property_endInd = self.dSf_pKMg_data_df.columns.tolist().index('TPSA')
+        dSf_property_mat = np.zeros((len(sid_list2query) + len(rxn_formula_list), property_endInd + 1 - property_startInd))
+        to_subtract_dSr_array = np.zeros(len(sid_list2query) + len(rxn_formula_list)) #to substract off inorganic compounds
+        for i, cur_entry in enumerate(sid_list2query + rxn_formula_list):
+            if i < len(sid_list2query):
+                #is sid
+                if cur_entry in sid2get_groups:
+                    dSf_group_mat[i] = sid2get_groups_gmat[sid2get_groups.index(cur_entry)][:group_num]
+                else:
+                    dSf_group_mat[i] = np.array(self.compounds_data_dict[cur_entry]['groups'][:group_num])
+                dSf_property_mat[i] = self.dSf_pKMg_data_df[self.dSf_pKMg_data_df.species_id == cur_entry].iloc[:,property_startInd:property_endInd+1].values[0]
+            else:
+                #is reaction
+                cur_rxn_dict = cur_entry if type(cur_entry) == dict else thermo_data.parse_formula(cur_entry)
+                for cur_cid, stoich in cur_rxn_dict.iteritems():
+                    cur_sid = self.compounds_pH7_species_id_dict[cur_cid]
+                    #construct group matrix for the reaction
+                    if cur_sid in sid2get_groups:
+                        #nondecomposable groups will effectively have 0 contribution to groups
+                        dSf_group_mat[i] += stoich * sid2get_groups_gmat[sid2get_groups.index(cur_sid)][:group_num]
                     else:
-                        cur_mol_properties = Calculate_mol_properties(self.compounds_data_dict[cur_sid]['smiles_form'])
-                        self.new_sid_properties_dict[cur_sid] = cur_mol_properties
-                        print "Calculated molecular properties for %s" % compound_id
-                    mol_properties_matrix[i] += (np.array(cur_mol_properties) * stoich)
+                        dSf_group_mat[i] += stoich * np.array(self.compounds_data_dict[cur_sid]['groups'][:group_num])
+                    #construct property matrix
+                    try:
+                        #inorganic compounds are not considered for dSr fitting
+                        to_subtract_dSr_array[i] += self.compounds_data_dict[cur_sid]['dS_f'] * stoich
+                    except KeyError:
+                        if cur_sid in self.dSf_pKMg_data_df.species_id.tolist():
+                            cur_mol_properties = self.dSf_pKMg_data_df[self.dSf_pKMg_data_df.species_id == cur_sid].iloc[:,property_startInd:property_endInd+1].values[0]
+                        elif cur_sid in self.new_sid_properties_dict.keys():
+                            cur_mol_properties = self.new_sid_properties_dict[cur_sid]
+                        else:
+                            print "Calculating molecular properties for %s" % cur_cid
+                            cur_mol_properties = Calculate_mol_properties(self.compounds_data_dict[cur_sid]['smiles_form'])
+                            self.new_sid_properties_dict[cur_sid] = cur_mol_properties
+                        dSf_property_mat[i] += stoich * np.array(cur_mol_properties)
 
-        #the features used for dSr estimation, group decompositions, dGr, met_num_change, molecular properties
-        rxn_dGr_subtracted = np.array(rxn_dGr_data) - to_subtract_dGr_array
-        rxn_met_num_change_array = dSr_calculation.calc_rxn_met_num_change(rxn_dicts)
-        dSr_property_matrix = np.append(np.append(dSr_group_matrix, np.transpose([rxn_dGr_subtracted]), axis = 1), np.transpose([rxn_met_num_change_array]), axis = 1)
-        dSr_property_matrix = np.hstack((dSr_property_matrix, mol_properties_matrix))
-
-        return dSr_property_matrix, to_subtract_dSr_array
-        
-    def dSr_predictor(self, rxn2calc_dicts, rxn2calc_dGr_data, compounds_data_dict, pH7species_id_dict):
+        #print dSf_group_mat.shape
+        #print dSf_property_mat.shape
+        dSf_group_property_mat = np.hstack((dSf_group_mat, dSf_property_mat))
+        return dSf_group_property_mat, to_subtract_dSr_array
+    
+    def _train(self):
         """
-        Estimator for dSr
-        :param rxn2calc_dicts: a list of dictionaries for reactions; in each dictionary, keys are metabolite id, values are stoichiometry of metabolite in reaction
-        :param rxn2calc_dGr_data: a list of dGr for each reaction
+        Train the regression model for dSf estimation, using both dSf and dSr data as training data
+        Standardization is performed before fitting
+        """
+        self.dSr_training_rdict_list = [thermo_data.parse_formula(cur_formula) for cur_formula in self.dSr_training_formula_list]
+        dSf_property_mat_train, to_subtract_dSr_array_train = self.build_property_mat(self.dSf_training_sids, self.dSr_training_rdict_list)
+        self.dSf_train_mat_0_cols = np.where(~dSf_property_mat_train.any(axis=0))[0]
+        self.dSf_property_mat_train = np.delete(dSf_property_mat_train, self.dSf_train_mat_0_cols, 1)
+        self.dSf_train_data = self.dSf_data_total - to_subtract_dSr_array_train
+        
+        best_lasso_alpha = 0.000225701971963 #selected l1 alpha for the final model
+        self.dSf_rg = make_pipeline(StandardScaler(), linear_model.Lasso(alpha=best_lasso_alpha, max_iter=250000, tol=0.001))
+        self.dSf_rg.fit(self.dSf_property_mat_train, self.dSf_train_data/1000)
+        
+    def dSr_predictor(self, rxn2calc_dicts, compounds_data_dict, compounds_pH7_species_id_dict, sid2predict_dSf = []):
+        """
+        Predict dSr or dSf for given reactions or aqueous species
+        :param rxn2calc_dicts: a list of reactions to estimated dSr; each reaction can either be a string such as "2 CHB_16761 = CHB_15422 + CHB_16027" or a dictionary such as {'CHB_15422': 1, 'CHB_16027': 1, 'CHB_16761': -2.0}
         :param compounds_data_dict: dictionary that stores information for different protonation states of the compound
         :param pH7species_id_dict: dictionary that maps compound id to its dominant pH 7 species id
-        :return: the list of predicted dSr for each reaction
+        :param sid2predict_dSf: the list of aqueous species ids to predict dSf
+        :return: the list of predicted dSr for reactions (and dSf for aqueous species)
         """
         self.compounds_data_dict = compounds_data_dict
-        self.pH7species_id_dict = pH7species_id_dict
-        dSr_training_data_rxn_dicts = [thermodynamics_data.parse_formula(cur_formula) for cur_formula in self.selected_dSr_training_data_table['rxn_formula'].tolist()]
-        dSr_property_matrix_training, to_subtract_dSr_array_training = self._construct_dSr_property_matrix(dSr_training_data_rxn_dicts,\
-                                                                        self.selected_dSr_training_data_table['median_dG_r'])
-        dSr_training_data = self.dSr_training_data - to_subtract_dSr_array_training #subtract dSr part due to inorganic compounds
-
-        # remove all 0 columns in property matrix
-        dSr_training_mat_0_cols = np.where(~dSr_property_matrix_training.any(axis=0))[0]
-        dSr_property_matrix_training = np.delete(dSr_property_matrix_training, dSr_training_mat_0_cols, 1)
-
-        # now set up the lasso regression model
-        best_lasso_a = 0.00123284673944
-        # make sure standardization is applied before training and prediction
-        dSr_rg = make_pipeline(StandardScaler(), linear_model.Lasso(alpha=best_lasso_a, max_iter=500000, tol=0.001))
-        dSr_rg.fit(dSr_property_matrix_training, dSr_training_data)
-
-        #now make the prediction
-        dSr_property_matrix_predict, to_subtract_dSr_array_predict = self._construct_dSr_property_matrix(rxn2calc_dicts, rxn2calc_dGr_data)
-        #remove columns according the index in training matrix
-        dSr_property_matrix_predict = np.delete(dSr_property_matrix_predict, dSr_training_mat_0_cols, 1)
-        dSr_prediction = dSr_rg.predict(dSr_property_matrix_predict)
-        dSr_prediction = dSr_prediction + to_subtract_dSr_array_predict #add it back to get the actual dSr
+        self.compounds_pH7_species_id_dict = compounds_pH7_species_id_dict
+        self._train()
+        rxn2calc_dicts = [cur_rxn if type(cur_rxn) == dict else thermo_data.parse_formula(cur_rxn) for cur_rxn in rxn2calc_dicts]
+        dSf_property_mat_predict, to_subtract_dSr_array_predict = self.build_property_mat(sid_list2query = sid2predict_dSf, rxn_formula_list = rxn2calc_dicts)
+        dSf_prediction = self.dSf_rg.predict(np.delete(dSf_property_mat_predict, self.dSf_train_mat_0_cols, 1))
+        dSf_prediction = dSf_prediction*1000 + to_subtract_dSr_array_predict
         
-        return dSr_prediction
-    
-    def get_TECRDB_rxn_dSr_dict(self, TECRDB_Keq_data_dict):
+        for i, cur_rxn_dict in enumerate(rxn2calc_dicts):
+            if cur_rxn_dict in self.dSr_training_rdict_list:
+                dSf_prediction[i+len(sid2predict_dSf)] = self.dSr_data[self.dSr_training_rdict_list.index(cur_rxn_dict)]
+        
+        return dSf_prediction
+        
+    def get_TECRDB_rxn_dSr_dict(self, TECRDB_Keq_data_dict, compounds_data_dict, compounds_pH7_species_id_dict):
         """
-        Calculate dSr for reactions in TECRDB
-        :param TECRDB_Keq_data_dict: generated from module process_thermo_data, the dictionary that stores thermodynamic
-               measurements of reactions key being reaction id, value being the info of reaction measurement
+        Calculate dSr for all reactions in TECRDB
+        :param TECRDB_Keq_data_dict: generated from module process_thermo_data, the dictionary that stores thermodynamic measurements of reactions key being reaction id, value being the info of reaction measurement
+        :param compounds_data_dict: dictionary that stores information for different protonation states of the compound
+        :param pH7species_id_dict: dictionary that maps compound id to its dominant pH 7 species id
         :return: a dictionary with key being reaction id, value being dSr of the reaction
         """
+        #assign 0 to reactions whose compounds do not have a smiles form or do not have properties calculated, these reactions all have measured data at 298.15 K, so will not affect the outcome of temperature corrections
+        pseudo_formula_to_dSr_dict = {'CHB_17908 = CHB_17513': 0, 'CHB_16389 = CHB_17976': 0, 'CHB_16374 = CHB_18151': 0, 'CHB_18191 = CHB_15033': 0, 'CHB_28262 = CHB_17437': 0, 'CHB_15724 = CHB_18139': 0}
+        TECRDB_rxn_formula = list(set([cur_rxn_dict['rxn_formula'] for cur_rxn_dict in TECRDB_Keq_data_dict.values() if cur_rxn_dict['rxn_formula'] not in pseudo_formula_to_dSr_dict.keys()]))
         TECRDB_rxn_dSr_dict = {}
-        rxn_formula_to_dSr_dict = dict(zip(self.selected_dSr_training_data_table['rxn_formula'].tolist(), list(self.dSr_training_data)))
+        rxn_formula_dSr_dict = dict(zip(TECRDB_rxn_formula, self.dSr_predictor(TECRDB_rxn_formula, compounds_data_dict, compounds_pH7_species_id_dict)))
+        rxn_formula_dSr_dict.update(pseudo_formula_to_dSr_dict)
         for rxn_id in TECRDB_Keq_data_dict.keys():
             cur_rxn_formula = TECRDB_Keq_data_dict[rxn_id]['rxn_formula']
-            TECRDB_rxn_dSr_dict[rxn_id] = rxn_formula_to_dSr_dict[cur_rxn_formula]
+            TECRDB_rxn_dSr_dict[rxn_id] = rxn_formula_dSr_dict[cur_rxn_formula]
         return TECRDB_rxn_dSr_dict

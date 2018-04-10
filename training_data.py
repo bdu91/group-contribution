@@ -14,6 +14,7 @@ class training_data(object):
         #load the compound data and thermo data
         self.get_thermo_data()
         self.get_TECRDB_compound_data()
+        self.dSr_calc = dSr_calculation()
         self.metal_correction = metal_correction #metal correction shown not to help with the estimate globally, so currently set to False
         self.T_correction = T_correction
         
@@ -47,8 +48,7 @@ class training_data(object):
         """
         Get dSr for reactions in TECRDB, return a dictionary with key being reaction id, value being its dSr
         """
-        dSr_calc = dSr_calculation(self.TECRDB_compounds_data_dict, self.TECRDB_compounds_pH7_species_id_dict)
-        self.TECRDB_rxn_dSr_dict = dSr_calc.get_TECRDB_rxn_dSr_dict(self.all_thermo_data_dict['dG_r'])
+        self.TECRDB_rxn_dSr_dict = self.dSr_calc.get_TECRDB_rxn_dSr_dict(self.all_thermo_data_dict['dG_r'], self.TECRDB_compounds_data_dict, self.TECRDB_compounds_pH7_species_id_dict)
             
     def get_training_data(self):
         """
@@ -75,7 +75,6 @@ class training_data(object):
         #For other compounds with dG_f data
         dG_f_cpd_thermo_data_sids = []
         dG_f_cpd_data_name = []
-        '''
         for species_id in sorted(self.all_thermo_data_dict['dG_f'].keys()):
             if species_id in self.TECRDB_compounds_data_dict.keys() and self.TECRDB_compounds_data_dict[species_id]['compound_id'] not in (self.inorg_cpd_with_thermo_data + self.cofactor_cids):
                 dG_f_cpd_data_name.append('dG_f_cpd#' + species_id)
@@ -84,8 +83,6 @@ class training_data(object):
             if species_id in self.TECRDB_compounds_data_dict.keys() and self.TECRDB_compounds_data_dict[species_id]['compound_id'] not in (self.inorg_cpd_with_thermo_data + self.cofactor_cids):
                 dG_f_cpd_data_name.append('dG_f_prime_cpd#' + species_id)
                 dG_f_cpd_thermo_data_sids.append(species_id)
-        '''
-        
         self.training_species_ids = sorted(list(set(TECRDB_sids + dG_f_inorg_cpd_sids + dG_f_cpd_thermo_data_sids)))
         self.training_rxn_ids = self.TECRDB_rxn_ids + dG_f_inorg_cpd_data_name + dG_f_cpd_data_name
         #print len(TECRDB_rxn_ids)
@@ -135,8 +132,11 @@ class training_data(object):
                     dGf0 = self.all_thermo_data_dict['dG_f'][cur_sid]
                 training_dGr0s.append(dGf0)
             if 'dG_f_prime_cpd' in cur_rid:
+                cur_cid = self.TECRDB_compounds_data_dict[cur_sid]['compound_id']
                 dGf_prime_val = self.all_thermo_data_dict['dG_f_prime'][cur_sid]
-                dGf0 = thermo_transform._get_dGf0_num(cur_sid, dGf_prime_val)
+                ddGf = thermo_transform._ddGf_pH7_num(cur_cid,7,0.25,298.15,{})
+                dGf0 = dGf_prime_val - ddGf
+                #dGf0 = thermo_transform._get_dGf0_num(cur_sid, dGf_prime_val)
                 training_dGr0s.append(dGf0)
         
         self.training_S_mat_T = np.array(training_S_mat_T)

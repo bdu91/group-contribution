@@ -33,14 +33,8 @@ class thermodynamic_transformations(object):
         :return: float to be used in for correction on dG_f
         """
         alpha_dG = (1e-3*(9.20483*T) - 1e-5*(1.284668 * T**2) + 1e-8*(4.95199 * T**3))*1000
-        beta = 1.6
         IS_sqrt = np.power(IS,0.5)
-        if IS < np.power(10,-2.3):
-            debye_huckel = alpha_dG * IS_sqrt
-        elif IS <= 0.1:
-            debye_huckel = alpha_dG * IS_sqrt / (1 + beta * IS_sqrt)
-        else:
-            debye_huckel = alpha_dG * (IS_sqrt/(1 + IS_sqrt) - 0.3 * IS) #davies equation at ionic strenght greater than 0.1
+        debye_huckel = alpha_dG * (IS_sqrt/(1 + IS_sqrt) - 0.3 * IS) # the Davies equation
         return debye_huckel
     
     @staticmethod
@@ -52,14 +46,8 @@ class thermodynamic_transformations(object):
         :return: float to be used in for correction on dH_f
         """
         alpha_dH = (-1e-5*(1.28466*T**2) + 1e-8*(9.90399 * T**3))*1000
-        beta = 1.6
         IS_sqrt = np.power(IS,0.5)
-        if IS < np.power(10,-2.3):
-            debye_huckel = alpha_dH * IS_sqrt
-        elif IS <= 0.1:
-            debye_huckel = alpha_dH * IS_sqrt / (1 + beta * IS_sqrt)
-        else:
-            debye_huckel = alpha_dH * (IS_sqrt/(1 + IS_sqrt) - 0.3 * IS) #davies equation at ionic strenght greater than 0.1
+        debye_huckel = alpha_dH * (IS_sqrt/(1 + IS_sqrt) - 0.3 * IS) # the Davies equation
         return debye_huckel
 
     def _ddGf_least_H_state_num(self, compound_id, pH, IS, T, metal_conc_dict):
@@ -150,15 +138,12 @@ class thermodynamic_transformations(object):
         reaction_info_dict = Keq_data_dict[rid]
         pH = reaction_info_dict['pH'];IS = reaction_info_dict['IS'];T = reaction_info_dict['T'];Keq = reaction_info_dict['Keq']
         rxn_dict = reaction_info_dict['rxn_dict']
-        if metal_correction == True:
-            metal_conc_dict = reaction_info_dict['metal ions']
+        #if metal_correction == True:
+        #    metal_conc_dict = reaction_info_dict['metal ions'] #correct for all metal concentrations
+        if metal_correction == True and 'Mg' in reaction_info_dict['metal ions'].keys():#only correct for Mg concentration
+            metal_conc_dict = {'Mg': reaction_info_dict['metal ions']['Mg']}
         else:
             metal_conc_dict = {}
-        #we can only correct for Mg concentration
-        #if 'Mg' in metal_conc_dict.keys():
-        #    metal_conc_dict = {'Mg': metal_conc_dict['Mg']}
-        #else:
-        #    metal_conc_dict = {}
         dGr_prime = -R*T*np.log(Keq)
         ddGr = 0
         for compound_id, stoich in rxn_dict.iteritems():        

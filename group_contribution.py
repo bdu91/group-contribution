@@ -19,18 +19,17 @@ class group_contribution(training_data):
         self.get_training_data_and_matrix()
         # group definitions include individual groups + nondecompose_sids + inorg_cpd_with_thermo_data + cofactor_cids
         self.group_def_num = len(self.TECRDB_compounds_data_dict['CHB_15422_-1']['groups']) #subject to change with added nondecomposable compounds
-        self.nondecompose_sids = ['CHB_16517_-3','CHB_18036_-3','CHB_15429_0','CHB_16215_-2', 'PBC_5289158_-3']
+        self.nondecompose_sids = ['CHB_16517_-3','CHB_18036_-3','CHB_15429_0','CHB_16215_-2', 'PBC_5289158_-3', 'CHB_17908_1', 'CHB_17513_0', 'CHB_28262_0']
         # excluding compounds that are treated as a single group
         self.group_only_num = self.group_def_num - len(self.nondecompose_sids + self.inorg_cpd_with_thermo_data + self.cofactor_cids)
         self.TECRDB_compound_ids = list(set([species_info_dict['compound_id'] for species_info_dict in self.TECRDB_compounds_data_dict.values()]))
-        self.thermo_data = thermo_data()
         self.dSr_calc = dSr_calculation()
     
     def formula2dict(self, rxn_formula_list):
         """
         Convert a list of reaction formula to a list of dictionary, each with key is metabolite, value is stoichiometry
         """
-        return [self.thermo_data.parse_formula(cur_formula) for cur_formula in rxn_formula_list]
+        return [thermo_data.parse_formula(cur_formula) for cur_formula in rxn_formula_list]
 
 
     def _update_cpd_data_dict(self):
@@ -67,7 +66,7 @@ class group_contribution(training_data):
         if self.new_compound_id_list != []:
             self.new_cpd_pH7_sid_list = [self.TECRDB_compounds_pH7_species_id_dict[cid] for cid in self.new_compound_id_list]
             new_cpd_pH7_sid_smiles_list = [self.TECRDB_compounds_data_dict[sid]['smiles_form'] for sid in self.new_cpd_pH7_sid_list]
-            new_cpd_pH7_sid_group_mat = group_contribution.get_group_matrix(new_cpd_pH7_sid_smiles_list)
+            new_cpd_pH7_sid_group_mat = compound_groups.get_group_matrix(new_cpd_pH7_sid_smiles_list)
             new_cpd_group_num = new_cpd_pH7_sid_group_mat.shape[1]
             
             for i, sid in enumerate(self.new_cpd_pH7_sid_list):
@@ -96,17 +95,35 @@ class group_contribution(training_data):
     def _update_cpd_data_and_groups(self):
         self._update_cpd_data_dict()
         self._update_cpd_groups()
+        
+    def get_species_group_matrix(self):
+        """
+        Set up the group matrix for training species
+        :return: a numpy array with row corresponding to species id and column corresponding to groups
+        """
+        training_sid_group_mat = []
+        for cur_sid in self.training_species_ids:
+            cur_sid_info_dict = self.TECRDB_compounds_data_dict[cur_sid]
+            if 'updated_groups' in cur_sid_info_dict.keys():
+                cur_sid_groups = list(cur_sid_info_dict['updated_groups'])
+            else:
+                cur_sid_groups = list(cur_sid_info_dict['groups'])
+            training_sid_group_mat.append(cur_sid_groups)
+        training_sid_group_mat = np.array(training_sid_group_mat)
+        return training_sid_group_mat
+        
     
-    def calc_dGr(self, rxn2calc, pH, IS, T, cpd_molstring_dict = {}, metal_conc_dict = {}):
+    def calc_dGr(self, rxn2calc, pH, IS, T, cpd_molstring_dict = {}, metal_conc_dict = {}, T_correction = True):
         """
         Calculate dGr of reaction using group contribution
         :param rxn2calc: a list of reaction formula, such as ['2 CHB_16761 = CHB_15422 + CHB_16027']
                          a list of dictionary is also possible: [{'CHB_15422':1, 'CHB_16027': 1, 'CHB_16761':-2}]
-        :param pH: pH
-        :param IS: ionic strength
-        :param T: temperature
+        :param pH: pH, can be a value or a list of values that matches the number of reactions to calculate
+        :param IS: ionic strength, can be a value or a list of values that matches the number of reactions to calculate
+        :param T: temperature, can be a value or a list of values that matches the number of reactions to calculate
         :param cpd_molstring_dict: a dictionary with key being compound id and value being molstring, necessary for new compounds in TECRDB
         :param metal_conc_dict: concentration of metal ions, with key being metal ion, value being the concentration
+               can be a dict or a list of dict that matches the number of reactions to calculate
                possible metal ions include: 'Mg', 'Ca', 'Co', 'IS', 'K', 'Li', 'Mn', 'Na', 'T', 'Zn'
                note this only works for compounds in TECRDB with metal bound form
         :return: dGr_prime under given condition
@@ -129,23 +146,24 @@ class group_contribution(training_data):
             cur_rxn_stoich_list = [0.0] * len(self.training_species_ids)
             for cid, stoich in cur_rxn_dict.iteritems():
                 cur_pH7_sid = self.TECRDB_compounds_pH7_species_id_dict[cid]
-                cur_cpd_ddGf = thermo_transform._ddGf_pH7_num(cid, pH, IS, T, metal_conc_dict)
+                if type(pH) == list:
+                    try:
+                        assert len(pH) == len(IS) == len(T) == len(rxn2calc)
+                    except AssertionError:
+                        print 'Number of conditions should match with number of reactions!'
+                    if metal_conc_dict == {}:
+                        cur_cpd_ddGf = thermo_transform._ddGf_pH7_num(cid, pH[i], IS[i], T[i], {})
+                    else:
+                        cur_cpd_ddGf = thermo_transform._ddGf_pH7_num(cid, pH[i], IS[i], T[i], metal_conc_dict[i])
+                else:
+                    cur_cpd_ddGf = thermo_transform._ddGf_pH7_num(cid, pH, IS, T, metal_conc_dict)
                 self.to_calc_ddGr[i] += cur_cpd_ddGf * stoich
                 cur_species_pos = self.training_species_ids.index(cur_pH7_sid)
                 cur_rxn_stoich_list[cur_species_pos] = stoich
             self.to_calc_S_mat_T.append(cur_rxn_stoich_list)
         self.to_calc_S_mat_T = np.array(self.to_calc_S_mat_T)
         
-        #set up the group matrix for all species ids
-        self.training_sid_group_mat = []
-        for cur_sid in self.training_species_ids:
-            cur_sid_info_dict = self.TECRDB_compounds_data_dict[cur_sid]
-            if 'updated_groups' in cur_sid_info_dict.keys():
-                cur_sid_groups = list(cur_sid_info_dict['updated_groups'])
-            else:
-                cur_sid_groups = list(cur_sid_info_dict['groups'])
-            self.training_sid_group_mat.append(cur_sid_groups)
-        self.training_sid_group_mat = np.array(self.training_sid_group_mat)
+        self.training_sid_group_mat = self.get_species_group_matrix()
         
         #set up training matrices and obtain estimates for group contribution (component contribution)
         self.training_rxn_group_mat = np.dot(self.training_S_mat_T, self.training_sid_group_mat)
@@ -159,12 +177,15 @@ class group_contribution(training_data):
         #calculate dGr0 and dGr_prime values
         self.predicted_dGr0 = np.dot(self.to_calc_S_mat_T, self.training_dG0_cc)
         self.predicted_dGr_prime = self.predicted_dGr0 + self.to_calc_ddGr
-        if T == 298.15:
+        if T == 298.15 or (len(np.unique(T)) == 1 and np.unique(T)[0] == 298.15) or T_correction == False:
             return self.predicted_dGr_prime
         else:
-            self.predicted_dSr0 = np.array(self.dSr_calc.dSr_predictor(self.rxn2calc_dicts, self.predicted_dGr0, \
+            self.predicted_dSr0 = np.array(self.dSr_calc.dSr_predictor(self.rxn2calc_dicts, \
                                            self.TECRDB_compounds_data_dict, self.TECRDB_compounds_pH7_species_id_dict))
-            self.predicted_dGr_prime_T_corr = self.predicted_dGr_prime - (T - 298.15)*self.predicted_dSr0
+            if type(T) == list:
+                self.predicted_dGr_prime_T_corr = self.predicted_dGr_prime - np.multiply(np.array(T) - 298.15, self.predicted_dSr0)
+            else:
+                self.predicted_dGr_prime_T_corr = self.predicted_dGr_prime - (T - 298.15)*self.predicted_dSr0
             return self.predicted_dGr_prime_T_corr
         
         
@@ -180,6 +201,7 @@ class group_contribution(training_data):
         compound_species_info_dict = {}
         compound_pH7_sid_dict = {}
         for i, cur_compound_id in enumerate(compound_id_list):
+            print "Calculating pKas and protonation states for %s" % cur_compound_id
             cur_smiles_form = molstring_list[i]
             pKas, nHs, zs, pH7_species_pos, pH7_species_smiles = Get_pKas_Hs_zs_pH7smiles(cur_smiles_form)
             binding_constants = np.cumsum([0] + pKas)
@@ -189,7 +211,6 @@ class group_contribution(training_data):
                 if i == pH7_species_pos:
                     compound_species_info_dict[cur_sid]['smiles_form'] = pH7_species_smiles
                     compound_pH7_sid_dict[cur_compound_id] = cur_sid
-            print "Calculated pKas and protonation states for %s" % cur_compound_id
         return compound_species_info_dict, compound_pH7_sid_dict
     
     @staticmethod
@@ -213,38 +234,3 @@ class group_contribution(training_data):
             P_N = np.eye(n) - P_R
             r = sum(np.abs(np.linalg.eig(P_R)[0]) > 0.5)
         return np.array(inv_A), np.array(P_R), np.array(P_N)
-    
-    @staticmethod
-    def get_group_matrix(molstring_list):
-        """
-        Calculate the groups for the list of input molstrings
-        :param molstring_list: the list of molstrings
-        :return: group matrix with rows corresponding to molstrings and columns corresponding to groups
-        """
-        groups_data = compound_groups.init_groups_data()
-        decomposer = compound_groups.InChIDecomposer(groups_data)
-        group_names = groups_data.GetGroupNames()
-        number_of_groups = len(group_names)
-
-        G = np.zeros((len(molstring_list), number_of_groups))
-        cpd_inds_without_gv = []
-
-        # decompose the compounds in the training_data and add to G
-        for i, cur_molstring in enumerate(molstring_list):
-            try:
-                group_def = decomposer.smiles_to_groupvec(cur_molstring)
-                for j in xrange(len(group_names)):
-                    G[i, j] = group_def[j]
-            except compound_groups.GroupDecompositionError:
-                # for compounds that have no smiles form or are not decomposable
-                # add a unique 1 in a new column
-                cpd_inds_without_gv.append(i)
-
-        N_non_decomposable = len(cpd_inds_without_gv)
-        add_G = np.zeros((len(molstring_list), N_non_decomposable))
-        for j, i in enumerate(cpd_inds_without_gv):
-            add_G[i, j] = 1
-        group_mat = np.hstack([G, add_G])
-        #the last group is a placeholder, 1 for compound that can be decomposed, 0 for compound that cannot be decomposed, we are removing it
-        group_mat = np.delete(group_mat, number_of_groups - 1,1)
-        return group_mat

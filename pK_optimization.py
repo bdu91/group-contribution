@@ -105,16 +105,18 @@ class pK_optimization(training_data):
         dGr0_val = []
         for rid in self.rids2optm:
             dGr0_val.append(self.functionDict[rid](newC))
-
         dGr0_val = np.array(dGr0_val)
-        dGr0_avg = np.mean(dGr0_val)
-        residuals = dGr0_val - np.array([dGr0_avg]*len(dGr0_val))
         
-        sqrd_errors = np.power(residuals,2)
-        sse = sum(sqrd_errors)
-        #mean_residual = np.mean(np.absolute(residuals))
-        #return np.array([mean_residual]*len(var_vector_to_use)) #make it a vector with the same length of variables
-        #return sqrd_errors
+        sqrd_error_list = []
+        start = 0
+        for i, cur_rid_list in enumerate(self.rids2optm_rxn_list):
+            #caculate the sum of squared error for each reaction and then multiply by the weights
+            cur_dGr0_val_list = dGr0_val[start:start + len(cur_rid_list)]
+            cur_residual = cur_dGr0_val_list - np.mean(cur_dGr0_val_list)
+            sqrd_error_list.append(sum(np.power(cur_residual,2)) * self.weights[i])
+            start += len(cur_rid_list)
+            
+        sse = sum(sqrd_error_list)
         return np.array([sse]*len(params)) #for optimization, the length of objective value should be at least the length of parameters
     
     def _minimizerApprox(self, candidate, methodApprox="lbfgsb",tolApprox=10**-3):
@@ -147,21 +149,27 @@ class pK_optimization(training_data):
             result = fitter.minimize(method='leastsq', params=result.params, xtol=self.xtol_value, ftol=self.ftol_value, gtol=self.gtol_value, epsfcn=e_value, maxfev=self.maxfev_value)
         return result
     
-    def setup_vars_and_eqns(self, rids2optm, rids2write_eqns, sids2write_sym):
+    def setup_vars_and_eqns(self, rids2optm_rxn_list, rids2write_eqns, sids2write_sym, weights = []):
         """
         Set up variables and dG0 equations containing variables
-        :param rids2optm: reaction ids whose dGr0s are used to optimize pK
-        :param rids2write_eqns: reaction ids to write dG0 equations, contain rids2optm and reaction ids that will use the optimized pK
+        :param rids2optm_rxn_list: a list of list, where each sublist contains the reaction ids of the same reaction whose dGr0s are used to optimize pK
+        :param rids2write_eqns: reaction ids to write dG0 equations, contain all rids from rids2optm_rxn_list and other reaction ids that will use the optimized pK
         :param sids2write_sym: species ids whose pKs are to write as variables
+        :param weights: weightings for the reactions used to optimize pK values, length equals the length of rids2optm_rxn_list, that is the number of different reactions
         """
-        self.rids2optm = rids2optm
+        self.rids2optm_rxn_list = rids2optm_rxn_list
+        self.rids2optm = pK_optimization.merge_list_of_list(self.rids2optm_rxn_list)
         self.rids2write_eqns = rids2write_eqns
         self.sids2write_sym = sids2write_sym
+        if weights == []:
+            self.weights = np.full(len(self.rids2optm_rxn_list), 1.0)
+        else:
+            self.weights = weights
         
         #Get species ids whose pKs are of interest to write symbols and participate in reactions that will be written into dGr_standard equations
         cids_in_rids2optm = list(set(pK_optimization.merge_list_of_list([self.all_thermo_data_dict['dG_r'][rid]['rxn_dict'].keys() for rid in self.rids2optm])))
-        selected_sids2write_sym = [sid for sid in self.sids2write_sym if self.TECRDB_compounds_data_dict[sid]['compound_id'] in cids_in_rids2optm]
-        self.thermo_transform.setup_symbols_for_species_pKs(selected_sids2write_sym)
+        self.selected_sids2write_sym = [sid for sid in self.sids2write_sym if self.TECRDB_compounds_data_dict[sid]['compound_id'] in cids_in_rids2optm]
+        self.thermo_transform.setup_symbols_for_species_pKs(self.selected_sids2write_sym)
         
         #Now set up dGr0_equations and corresponding functions
         self.dGr0_eqns_dict = self.write_dGr0_equations(self.rids2write_eqns)

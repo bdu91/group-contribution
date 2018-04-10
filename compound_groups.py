@@ -1222,6 +1222,40 @@ def MakeOpts():
 def init_groups_data():
     return GroupsData.FromGroupsFile(StringIO(GROUP_CSV), transformed=False)
 
+def get_group_matrix(molstring_list):
+    """
+    Calculate the groups for the list of input molstrings
+    :param molstring_list: the list of molstrings
+    :return: group matrix with rows corresponding to molstrings and columns corresponding to groups
+    """
+    groups_data = init_groups_data()
+    decomposer = InChIDecomposer(groups_data)
+    group_names = groups_data.GetGroupNames()
+    number_of_groups = len(group_names)
+
+    G = np.zeros((len(molstring_list), number_of_groups))
+    cpd_inds_without_gv = []
+
+    # decompose the compounds in the training_data and add to G
+    for i, cur_molstring in enumerate(molstring_list):
+        try:
+            group_def = decomposer.smiles_to_groupvec(cur_molstring)
+            for j in xrange(len(group_names)):
+                G[i, j] = group_def[j]
+        except GroupDecompositionError:
+            # for compounds that have no smiles form or are not decomposable
+            # add a unique 1 in a new column
+            cpd_inds_without_gv.append(i)
+
+    N_non_decomposable = len(cpd_inds_without_gv)
+    add_G = np.zeros((len(molstring_list), N_non_decomposable))
+    for j, i in enumerate(cpd_inds_without_gv):
+        add_G[i, j] = 1
+    group_mat = np.hstack([G, add_G])
+    #the last group is a placeholder, 1 for compound that can be decomposed, 0 for compound that cannot be decomposed, we are removing it
+    group_mat = np.delete(group_mat, number_of_groups - 1,1)
+    return group_mat
+
 if __name__ == "__main__":
     parser = MakeOpts()
     options, _ = parser.parse_args(sys.argv)
