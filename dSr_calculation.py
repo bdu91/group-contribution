@@ -163,7 +163,7 @@ class dSr_calculation(object):
         :return: a dictionary with key being reaction id, value being dSr of the reaction
         """
         #assign 0 to reactions whose compounds do not have a smiles form or do not have properties calculated, these reactions all have measured data at 298.15 K, so will not affect the outcome of temperature corrections
-        pseudo_formula_to_dSr_dict = {'CHB_17908 = CHB_17513': 0, 'CHB_16389 = CHB_17976': 0, 'CHB_16374 = CHB_18151': 0, 'CHB_18191 = CHB_15033': 0, 'CHB_28262 = CHB_17437': 0, 'CHB_15724 = CHB_18139': 0}
+        pseudo_formula_to_dSr_dict = {'CHB_17908 = CHB_17513': 0, 'CHB_16389 = CHB_17976': 0, 'CHB_16374 = CHB_18151': 0, 'CHB_18191 = CHB_15033': 0, 'CHB_28262 = CHB_17437': 0, 'CHB_15724 = CHB_18139': 0, 'CHB_28192 = CHB_55437': 0, 'MNXM_145809 = MNXM_6271': 0}
         TECRDB_rxn_formula = list(set([cur_rxn_dict['rxn_formula'] for cur_rxn_dict in TECRDB_Keq_data_dict.values() if cur_rxn_dict['rxn_formula'] not in pseudo_formula_to_dSr_dict.keys()]))
         TECRDB_rxn_dSr_dict = {}
         rxn_formula_dSr_dict = dict(zip(TECRDB_rxn_formula, self.dSr_predictor(TECRDB_rxn_formula, compounds_data_dict, compounds_pH7_species_id_dict)))

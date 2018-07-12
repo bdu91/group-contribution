@@ -165,6 +165,7 @@ GROUP_CSV = """"NAME","PROTONS","CHARGE","MAGNESIUMS","SMARTS","FOCAL_ATOMS","RE
 "phosphonate group -2 charge",0,-2,0,"[O-]P([O-])(=O)*","0|1|2|3","phosphonate group -2 charge",
 "phosphonate group -1 charge",1,-1,0,"OP([O-])(=O)*","0|1|2|3","phosphonate group -1 charge",
 "phosphonate group 0 charge",2,0,0,"OP(O)(=O)*","0|1|2|3","phosphonate group 0 charge",
+"double bond aromatic C", 0,0,0,"c=*","0","double bond aromatic C",
 """
 
 class GroupVector(list):

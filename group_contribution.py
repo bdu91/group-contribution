@@ -19,7 +19,7 @@ class group_contribution(training_data):
         self.get_training_data_and_matrix()
         # group definitions include individual groups + nondecompose_sids + inorg_cpd_with_thermo_data + cofactor_cids
         self.group_def_num = len(self.TECRDB_compounds_data_dict['CHB_15422_-1']['groups']) #subject to change with added nondecomposable compounds
-        self.nondecompose_sids = ['CHB_16517_-3','CHB_18036_-3','CHB_15429_0','CHB_16215_-2', 'PBC_5289158_-3', 'CHB_17908_1', 'CHB_17513_0', 'CHB_28262_0']
+        self.nondecompose_sids = ['CHB_16517_-3','CHB_18036_-3','CHB_15429_0','CHB_16215_-2', 'PBC_5289158_-3', 'CHB_17908_1', 'CHB_17513_0', 'CHB_28262_0', 'CHB_28192_0', 'CHB_55437_0', 'MNXM_145809_0', 'MNXM_6271_0']
         # excluding compounds that are treated as a single group
         self.group_only_num = self.group_def_num - len(self.nondecompose_sids + self.inorg_cpd_with_thermo_data + self.cofactor_cids)
         self.TECRDB_compound_ids = list(set([species_info_dict['compound_id'] for species_info_dict in self.TECRDB_compounds_data_dict.values()]))
