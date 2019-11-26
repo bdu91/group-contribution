@@ -18,7 +18,7 @@ A python package that calculates the standard Gibbs free energy of reaction as a
 * lmfit >= 0.9.2
 * sympy >= 1.1.1
 
-For more information regarding the methods, please refer to [our paper](https://www.biorxiv.org/content/early/2018/03/27/289918)  (currently under review) hosted on bioRxiv.
+For more information regarding the methods, please refer to [our paper](https://www.cell.com/biophysj/fulltext/S0006-3495(18)30524-1) in Biophysical Journal.
 
 
 ## Installation on Ubuntu
